@@ -2,14 +2,44 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-class BigramLanguageModel(nn.Module):
+from dataset import vocab_size
+from config import n_embed, block_size, device
 
-    def __init__(self, vocab_size):
+class Head(nn.Module): 
+    def __init__(self, head_size):
         super().__init__()
-        self.token_embedding_table = nn.Embedding(vocab_size, vocab_size)
+        self.key = nn.Linear(n_embed, head_size, bias=False)
+        self.query = nn.Linear(n_embed, head_size, bias=False)
+        self.value = nn.Linear(n_embed, head_size, bias=False)
+        self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
+
+    def forward(self, x):
+        B, T, C = x.shape
+        k = self.key(x)
+        q = self.query(x)
+        v = self.value(x)
+        wei = q @ k.transpose(-2, -1) * C**-0.5
+        wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
+        wei = F.softmax(wei, dim=-1)
+        out = wei @ v
+        return out
+        
+class BigramLanguageModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.token_embedding_table = nn.Embedding(vocab_size, n_embed)
+        self.position_embedding_table = nn.Embedding(block_size, n_embed)
+        self.sa_heads = Head(n_embed)
+        self.lm_head = nn.Linear(n_embed, vocab_size)
 
     def forward(self, idx, targets=None):
-        logits = self.token_embedding_table(idx)
+
+        B, T = idx.shape
+
+        token_emb = self.token_embedding_table(idx)
+        pos_emb = self.position_embedding_table(torch.arange(T, device=device))
+        x = token_emb + pos_emb
+        logits = self.lm_head(x)
 
         if targets == None:
             loss = None

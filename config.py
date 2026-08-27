@@ -1,8 +1,9 @@
 import torch
 
-BATCH_SIZE = 4
-BLOCK_SIZE = 8
-MAX_ITERS = 3000
-EVAL_INTERVAL = 300
-EVAL_ITERS = 200
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+batch_size = 4
+block_size = 8
+max_iters = 3000
+eval_interval = 300
+eval_iters = 200
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+n_embed = 32

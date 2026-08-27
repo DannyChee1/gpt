@@ -1,21 +1,21 @@
 import torch
 
-from config import BATCH_SIZE, BLOCK_SIZE, DEVICE, MAX_ITERS, EVAL_INTERVAL, EVAL_ITERS
-from dataset import get_batch, vocab_size, decode
+from config import batch_size, block_size, device, max_iters, eval_interval, eval_iters
+from dataset import get_batch, decode
 from model import BigramLanguageModel
 
 torch.manual_seed(0)
 
 xb, yb = get_batch('train')
-# for b in range(BATCH_SIZE):
-#     for t in range(BLOCK_SIZE):
+# for b in range(batch_size):
+#     for t in range(block_size):
 #         context = xb[b, :t+1]
 #         target = yb[b, t]
 #         print(f"when input is {context.tolist()} the target is {target}")
 
 torch.manual_seed(0)
-m = BigramLanguageModel(vocab_size)
-m = m.to(DEVICE)
+m = BigramLanguageModel()
+m = m.to(device)
 optimizer = torch.optim.AdamW(m.parameters(), lr=1e-3)
 
 @torch.no_grad()
@@ -23,8 +23,8 @@ def estimate_loss():
     out = {}
     m.eval()
     for split in ['train', 'val']:
-        losses = torch.zeros(EVAL_ITERS)
-        for k in range(EVAL_ITERS):
+        losses = torch.zeros(eval_iters)
+        for k in range(eval_iters):
             X, Y = get_batch(split)
             logits, loss = m(X, Y)
             losses[k] = loss.item()
@@ -32,8 +32,8 @@ def estimate_loss():
     m.train()
     return out
 
-for i in range(MAX_ITERS):
-    if i % EVAL_INTERVAL == 0:
+for i in range(max_iters):
+    if i % eval_interval == 0:
         losses = estimate_loss()
         print(f"step {i}: train loss: {losses['train']:.4f}, val loss: {losses['val']:.4f}")
 
@@ -43,5 +43,5 @@ for i in range(MAX_ITERS):
     loss.backward()
     optimizer.step()
 
-idx = torch.zeros((1,1), dtype=torch.long, device=DEVICE)
+idx = torch.zeros((1,1), dtype=torch.long, device=device)
 print(decode(m.generate(idx, max_new_tokens=400)[0].tolist()))
