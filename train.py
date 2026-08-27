@@ -1,6 +1,6 @@
 import torch
 
-from config import batch_size, block_size, device, max_iters, eval_interval, eval_iters
+from config import batch_size, block_size, device, max_iters, eval_interval, eval_iters, learning_rate
 from dataset import get_batch, decode
 from model import BigramLanguageModel
 
@@ -16,7 +16,7 @@ xb, yb = get_batch('train')
 torch.manual_seed(0)
 m = BigramLanguageModel()
 m = m.to(device)
-optimizer = torch.optim.AdamW(m.parameters(), lr=1e-3)
+optimizer = torch.optim.AdamW(m.parameters(), lr=learning_rate)
 
 @torch.no_grad()
 def estimate_loss():

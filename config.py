@@ -7,3 +7,4 @@ eval_interval = 300
 eval_iters = 200
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_embed = 32
+learning_rate = 1e-3
