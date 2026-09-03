@@ -1,10 +1,7 @@
 # gpt
 
-A simplified language model in PyTorch from scratch.
+A GPT-2 implementation in PyTorch, from scratch.
 
-## Structure
-
-- `config.py` - hyperparameters
-- `dataset.py` - loads `text.txt`, builds vocab, creates train/val batches
-- `model.py` - the model
-- `train.py` - training loop + sample generation
+The earlier character-level bigram/attention model (the one this README used to
+describe) is preserved on the `nanogpt` branch, including its full commit
+history.
