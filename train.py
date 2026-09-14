@@ -1,5 +1,6 @@
 import torch
 import time
+import math
 
 from config import GPTConfig, TrainConfig
 from data import DataLoader
@@ -13,6 +14,15 @@ def get_device():
         return "mps"
     return "cpu"
 
+def get_lr(iter):
+    if iter < train_config.warmup_steps:
+        return train_config.max_lr * (iter + 1) / train_config.warmup_steps
+    if iter > train_config.max_steps:
+        return train_config.min_lr
+    decay_ratio = (iter - train_config.warmup_steps) / (train_config.max_steps - train_config.warmup_steps)
+    assert 0 <= decay_ratio <= 1
+    coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))
+    return train_config.min_lr + coeff * (train_config.max_lr - train_config.min_lr)
 
 device = get_device()
 print(f"Using device: {device}")
@@ -31,7 +41,7 @@ model = GPT(GPTConfig())
 model.to(device)
 model = torch.compile(model)
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=train_config.learning_rate)
+optimizer = model.configure_optimizers(train_config, device) # torch.optim.AdamW(model.parameters(), lr=train_config.learning_rate, betas=(0.9, 0.95), eps=1e-8)
 for iter in range(train_config.max_steps):
     t0 = time.time()
     x, y = data.next_batch()
@@ -40,6 +50,12 @@ for iter in range(train_config.max_steps):
     with torch.autocast(device_type=device, dtype=torch.bfloat16):
         logits, loss = model(x, y)
     loss.backward()
+    norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+    lr = get_lr(iter)
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+
     optimizer.step()
     if device == "cuda":
         torch.cuda.synchronize()
@@ -48,4 +64,4 @@ for iter in range(train_config.max_steps):
     t1 = time.time()
     dt = t1 - t0
     tokens_per_sec = train_config.batch_size * train_config.seq_len / dt
-    print(f"step {iter} loss: {loss.item()} time: {dt*1000:.2f}ms tokens/sec: {tokens_per_sec:.2f}")
+    print(f"step {iter} loss: {loss.item()} time: {dt*1000:.2f}ms tokens/sec: {tokens_per_sec:.2f} lr: {lr:.2e} norm: {norm.item():.2e}")

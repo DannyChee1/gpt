@@ -17,5 +17,9 @@ class TrainConfig:
     batch_size: int = 4
     seq_len: int = 1024
     learning_rate: float = 3e-4
-    max_steps: int = 50
+    max_lr: float = 6e-4
+    min_lr: float = 6e-5 # max_lr * 0.1
+    warmup_steps: int = 10
+    max_steps: int = 30
     seed: int = 1337
+    weight_decay: float = 0.1
