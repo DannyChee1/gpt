@@ -157,7 +157,7 @@ class GPT(nn.Module):
 
     def configure_optimizers(self, train_config: TrainConfig, device: str):
         param_dict = {pn: p for pn, p in self.named_parameters()}
-        param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
+        param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad} 
         decay_params = [p for p in param_dict.values() if p.dim() >= 2]
         nodecay_params = [p for p in param_dict.values() if p.dim() < 2]
         optim_groups = [

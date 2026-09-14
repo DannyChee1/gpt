@@ -1,3 +1,4 @@
+import os
 import torch
 import time
 import math
@@ -5,6 +6,7 @@ import math
 from config import GPTConfig, TrainConfig
 from data import DataLoader
 from model import GPT
+from torch.distributed import init_process_group, destroy_process_group
 
 
 def get_device():
@@ -24,9 +26,31 @@ def get_lr(iter):
     coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))
     return train_config.min_lr + coeff * (train_config.max_lr - train_config.min_lr)
 
-device = get_device()
-print(f"Using device: {device}")
+def setup_distributed():
+    ddp = int(os.environ.get("RANK", -1)) != -1
+    if ddp:
+        assert torch.cuda.is_available(), "CUDA is not available"
+        init_process_group(backend="nccl")
+        ddp_rank = int(os.environ["RANK"])
+        ddp_world_size = int(os.environ["WORLD_SIZE"])
+        ddp_local_rank = int(os.environ["LOCAL_RANK"])
+        device = f"cuda:{ddp_local_rank}"
+        torch.cuda.set_device(device)
+        master_process = ddp_rank == 0
+    else:
+        ddp_rank = 0
+        ddp_world_size = 1
+        ddp_local_rank = 0
+        master_process = True
+        device = "cpu"
+        if torch.cuda.is_available():
+            device = "cuda"
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            device = "mps"
+        print(f"Using device: {device}")
+    return ddp, ddp_rank, ddp_local_rank, ddp_world_size, master_process, device
 
+ddp, ddp_rank, ddp_local_rank, ddp_world_size, master_process, device = setup_distributed()
 train_config = TrainConfig()
 
 torch.manual_seed(train_config.seed)
@@ -35,10 +59,12 @@ if torch.cuda.is_available():
 
 
 total_batch_size = 524288 # 2^19, ~0.5M in tokens
-tokens_per_micro_batch = train_config.batch_size * train_config.seq_len
+tokens_per_micro_batch = train_config.batch_size * train_config.seq_len * ddp_world_size
 assert total_batch_size % tokens_per_micro_batch == 0, "total_batch_size must be divisible by B * T"
 grad_accumulation_steps = total_batch_size // tokens_per_micro_batch
-print(f"Using total_batch_size: {total_batch_size} and grad_accumulation_steps: {grad_accumulation_steps}")
+
+if master_process:
+    print(f"Using total_batch_size: {total_batch_size} and grad_accumulation_steps: {grad_accumulation_steps}")
 
 data = DataLoader(B=train_config.batch_size, T=train_config.seq_len, data_path=train_config.data_path)
 
