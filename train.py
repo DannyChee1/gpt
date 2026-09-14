@@ -33,6 +33,13 @@ torch.manual_seed(train_config.seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed(train_config.seed)
 
+
+total_batch_size = 524288 # 2^19, ~0.5M in tokens
+tokens_per_micro_batch = train_config.batch_size * train_config.seq_len
+assert total_batch_size % tokens_per_micro_batch == 0, "total_batch_size must be divisible by B * T"
+grad_accumulation_steps = total_batch_size // tokens_per_micro_batch
+print(f"Using total_batch_size: {total_batch_size} and grad_accumulation_steps: {grad_accumulation_steps}")
+
 data = DataLoader(B=train_config.batch_size, T=train_config.seq_len, data_path=train_config.data_path)
 
 torch.set_float32_matmul_precision("high") # use TF32 instead of FP32 for faster computation
@@ -44,12 +51,19 @@ model = torch.compile(model)
 optimizer = model.configure_optimizers(train_config, device) # torch.optim.AdamW(model.parameters(), lr=train_config.learning_rate, betas=(0.9, 0.95), eps=1e-8)
 for iter in range(train_config.max_steps):
     t0 = time.time()
-    x, y = data.next_batch()
-    x, y = x.to(device), y.to(device)
     optimizer.zero_grad()
-    with torch.autocast(device_type=device, dtype=torch.bfloat16):
-        logits, loss = model(x, y)
-    loss.backward()
+
+    total_loss = 0.0
+    for step in range(grad_accumulation_steps):
+        x, y = data.next_batch()
+        x, y = x.to(device), y.to(device)
+
+        with torch.autocast(device_type=device, dtype=torch.bfloat16):
+            logits, loss = model(x, y)
+        loss = loss / grad_accumulation_steps
+        total_loss += loss.detach()
+        loss.backward()
+
     norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
     lr = get_lr(iter)
@@ -63,5 +77,5 @@ for iter in range(train_config.max_steps):
         torch.mps.synchronize()
     t1 = time.time()
     dt = t1 - t0
-    tokens_per_sec = train_config.batch_size * train_config.seq_len / dt
-    print(f"step {iter} loss: {loss.item()} time: {dt*1000:.2f}ms tokens/sec: {tokens_per_sec:.2f} lr: {lr:.2e} norm: {norm.item():.2e}")
+    tokens_per_sec = total_batch_size / dt
+    print(f"step {iter} loss: {total_loss.item():.6f} time: {dt*1000:.2f}ms tokens/sec: {tokens_per_sec:.2f} lr: {lr:.2e} norm: {norm.item():.2e}")
